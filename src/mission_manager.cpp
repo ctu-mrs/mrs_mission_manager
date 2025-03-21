@@ -67,6 +67,7 @@ private:
   mission_state_t                             previous_mission_state_ = mission_state_t::IDLE;
 
   std::string robot_name_;
+  bool        debug_;
 
   std::atomic_bool is_initialized_  = false;
   std::atomic_bool mission_info_processed_  = false;
@@ -184,6 +185,7 @@ void MissionManager::onInit() {
 
   param_loader.loadParam("custom_config", custom_config_path);
   param_loader.loadParam("robot_name", robot_name_);
+  param_loader.loadParam("debug", debug_);
 
   if (custom_config_path != "") {
     param_loader.addYamlFile(custom_config_path);
@@ -797,14 +799,15 @@ MissionManager::result_t MissionManager::actionGoalValidation(const ActionServer
     ROS_WARN_STREAM_THROTTLE(1.0, ss.str());
     return {false, ss.str()};
   }
- 
-  for (int i=0; i< goal.points.size(); i++) { 
-    ROS_INFO("[MissionManager]: Received goal : x=%f, y=%f, z=%f",
-        goal.points.at(i).position.x,
-        goal.points.at(i).position.y,
-        goal.points.at(i).position.z);
-  }
 
+  if (debug_) {
+    for (int i=0; i< goal.points.size(); i++) { 
+      ROS_INFO("[MissionManager]: Received goal : x=%f, y=%f, z=%f",
+          goal.points.at(i).position.x,
+          goal.points.at(i).position.y,
+          goal.points.at(i).position.z);
+    }  
+  }
   std::string frame_id;
 
   switch (goal.frame_id) {
@@ -852,14 +855,16 @@ MissionManager::result_t MissionManager::actionGoalValidation(const ActionServer
     }
   }
 
-  for (size_t i=0; i < transformed_array.array.size(); i++) {
+  if (debug_) {
+    for (size_t i=0; i < transformed_array.array.size(); i++) {
 
-    ROS_INFO("[MissionManager]: Transformed point %zu  x: %f  y: %f z: %f h: %f", i,
-        transformed_array.array.at(i).position.x,
-        transformed_array.array.at(i).position.y,
-        transformed_array.array.at(i).position.z,
-        transformed_array.array.at(i).heading
-        );
+      ROS_INFO("[MissionManager]: Transformed point %zu  x: %f  y: %f z: %f h: %f", i,
+          transformed_array.array.at(i).position.x,
+          transformed_array.array.at(i).position.y,
+          transformed_array.array.at(i).position.z,
+          transformed_array.array.at(i).heading
+          );
+    }  
   }
   
   current_path_array_ = transformed_array;
@@ -918,15 +923,6 @@ MissionManager::result_t MissionManager::validateMissionSrv(const mrs_msgs::Path
   waypointArray.array                 = current_trajectory_.points;
   validateReferenceSrv.request.array = waypointArray;
 
-  //Debugging
-  ROS_INFO_STREAM("[MissionManager]: Path size: " << msg.points.size()); 
-  ROS_INFO_STREAM("[MissionManager]: Trajectory size: " << getPathSrv.response.trajectory.points.size()); 
-  ROS_INFO_STREAM("[MissionManager]: Trajectory idxs size: " << current_trajectory_idxs_.size());
-  for (auto& id : current_trajectory_idxs_) {
-    ROS_INFO_STREAM("[MissionManager]: id: " << id);
-  }
-  //Debugging
-  
   if (sc_mission_validation_.call(validateReferenceSrv)) {
     const bool all_success = std::all_of(validateReferenceSrv.response.success.begin(),
         validateReferenceSrv.response.success.end(), [](bool v) { return v; });
@@ -944,11 +940,11 @@ MissionManager::result_t MissionManager::validateMissionSrv(const mrs_msgs::Path
             unvalid_points.push_back(current_trajectory_.points.at(point_id));
           }
       }
-      //Debugging
+
       for (auto& point : unvalid_points) {
-        ROS_INFO_STREAM("[MissionManager]: unvalid point: " << point);
+        ROS_WARN_STREAM("[MissionManager]: unvalid point: " << point);
       }
-      //Debugging
+      
       if (unvalid_points.size() == 0) {
         ROS_WARN("[MissionManager]: The given path is valid, however the UAV seems to be outside of safety area/obstacle.");
         return {false," Given path for: "+ robot_name_+ " is valid, however the UAV seems to be outside of safety area or inside an obstacle."};
@@ -986,29 +982,29 @@ void MissionManager::processMissionInfo(const mrs_msgs::ReferenceArray reference
   goal_progress_ = 0.0;
   mission_info_processed_ = false;
 
-  int current_goal_idx = 0;
-  mrs_msgs::Reference current_point;
-  mrs_msgs::Reference current_trajectory_point;
+  /* int current_goal_idx = 0; */
+  /* mrs_msgs::Reference current_point; */
+  /* mrs_msgs::Reference current_trajectory_point; */
 
-  //Find corresponding trajectory ID's from the original received points
-  //Currently finding closest sample from trajectory generation and original points
-  //TODO: Improve correspondence implementation, can be integrated within MRS trajectory generation to be more accurate
-  for (size_t i =0; i < current_trajectory_.points.size(); i++) {
-    current_point = reference_array.array.at(current_goal_idx); 
-    current_trajectory_point = current_trajectory_.points.at(i);
-    const double dist = distance(current_point, current_trajectory_point);
+  /* //Find corresponding trajectory ID's from the original received points */
+  /* //Currently finding closest sample from trajectory generation and original points */
+  /* //TODO: Improve correspondence implementation, can be integrated within MRS trajectory generation to be more accurate */
+  /* for (size_t i =0; i < current_trajectory_.points.size(); i++) { */
+  /*   current_point = reference_array.array.at(current_goal_idx); */ 
+  /*   current_trajectory_point = current_trajectory_.points.at(i); */
+  /*   const double dist = distance(current_point, current_trajectory_point); */
 
-    if ( dist < tolerance_) {
-      ROS_INFO("Found the %d point in trajectory, with ID: %zu", current_goal_idx , i);
-      /* current_trajectory_idxs_.push_back(i); */
-      if (++current_goal_idx == reference_array.array.size()) {
-        ROS_INFO("[MissionManager]: Found all path points ID");
-        break;
-      } 
-    }
-  }
-  ROS_INFO_STREAM("[MissionManager]: reference array size: " << reference_array.array.size());
-  ROS_INFO_STREAM("[MissionManager]: current_trajectory_idxs_: " << current_trajectory_idxs_.size());
+  /*   if ( dist < tolerance_) { */
+  /*     ROS_INFO("Found the %d point in trajectory, with ID: %zu", current_goal_idx , i); */
+  /*     /1* current_trajectory_idxs_.push_back(i); *1/ */
+  /*     if (++current_goal_idx == reference_array.array.size()) { */
+  /*       ROS_INFO("[MissionManager]: Found all path points ID"); */
+  /*       break; */
+  /*     } */ 
+  /*   } */
+  /* } */
+  /* ROS_INFO_STREAM("[MissionManager]: reference array size: " << reference_array.array.size()); */
+  /* ROS_INFO_STREAM("[MissionManager]: current_trajectory_idxs_: " << current_trajectory_idxs_.size()); */
 
   if (current_trajectory_idxs_.size() == reference_array.array.size()){
     mission_info_processed_ = true;
@@ -1029,12 +1025,14 @@ bool MissionManager::replanMission() {
       current_path_array_.array.begin() + goal_idx_,
       current_path_array_.array.end());
 
-  for (const auto& point : current_path_array_.array) {
-    ROS_INFO("[MissionManager]: Current point: x:%f y:%f z:%f h:%f ", point.position.x,point.position.y,point.position.z,point.heading);
-  }
+  if (debug_) {
+    for (const auto& point : current_path_array_.array) {
+      ROS_INFO("[MissionManager]: Traversed point: x:%f y:%f z:%f h:%f ", point.position.x,point.position.y,point.position.z,point.heading);
+    }
 
-  for (const auto& point : remaining_path_array.array) {
-    ROS_INFO("[MissionManager]: Remaining point: x:%f y:%f z:%f h:%f ", point.position.x,point.position.y,point.position.z,point.heading);
+    for (const auto& point : remaining_path_array.array) {
+      ROS_INFO("[MissionManager]: Remaining point: x:%f y:%f z:%f h:%f ", point.position.x,point.position.y,point.position.z,point.heading);
+    }  
   }
 
   mrs_msgs::Path msg_path;
@@ -1053,7 +1051,7 @@ bool MissionManager::replanMission() {
     if (getPathSrv.response.success) {
       ROS_INFO_STREAM("Successfull response from \"" << sc_get_path_.getService() << "\" with response \"" << getPathSrv.response.message << "\".");
     } else {
-      ROS_INFO_STREAM("Unsuccessfull response from \"" << sc_get_path_.getService() << "\" with response \"" << getPathSrv.response.message << "\".");
+      ROS_WARN_STREAM("Unsuccessfull response from \"" << sc_get_path_.getService() << "\" with response \"" << getPathSrv.response.message << "\".");
       return false;
     }
   } else {
